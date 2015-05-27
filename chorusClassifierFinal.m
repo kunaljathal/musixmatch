@@ -43,7 +43,7 @@ groupVectorTrain = [1, 0, 1, 0, 1, 0];
 
 % List the file name of the audio snippet you want to TEST here. (Try some
 % other test samples too: CaliforniaGirls_NoChorus.wav, Happy_Chorus.wav,
-% TeenageDream_NoChorus.wav, Happy_NoChorus.wav, etc.)
+% TeenageDream_Chorus.wav, Happy_NoChorus.wav, etc.)
 testSample = 'CaliforniaGirls_Chorus.wav';
 
 songList = size(songVectorTrain);
@@ -63,7 +63,7 @@ end
 fileNameTest = sprintf('Songs/%s', testSample);
 featureVectorTest = FeatureExtractor(fileNameTest, false);
 
-class = knnclassify(featureVectorTest, featureVectorTrain, groupVectorTrain, 5);
+class = knnclassify(featureVectorTest, featureVectorTrain, groupVectorTrain, 3);
 
 if (class == 0)
     disp(sprintf('\nAudio snippet %s does NOT contain a chorus transition.\n', testSample));
