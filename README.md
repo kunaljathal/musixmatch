@@ -1,4 +1,4 @@
 # musixmatch
 Musixmatch Chorus Detection
 
-RUN ChorusClassifierFinal in MATLAB. Minimum version needed is R2012b, but preferrably R2015a.
+RUN chorusClassifierFinal in a MATLAB environment. Minimum version required is R2012b, but R2015a recommended.
