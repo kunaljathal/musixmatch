@@ -41,7 +41,9 @@ songVectorTrain = char(...
 % Chorus.
 groupVectorTrain = [1, 0, 1, 0, 1, 0];
 
-% List the file name of the audio snippet you want to TEST here
+% List the file name of the audio snippet you want to TEST here. (Try some
+% other test samples too: CaliforniaGirls_NoChorus.wav, Happy_Chorus.wav,
+% TeenageDream_NoChorus.wav, Happy_NoChorus.wav, etc.)
 testSample = 'CaliforniaGirls_Chorus.wav';
 
 songList = size(songVectorTrain);
