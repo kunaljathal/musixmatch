@@ -26,7 +26,8 @@
 % *************************************************************************
 function f = FeatureExtractor(fileName, playChorus)
 
-% Load audio snippet
+% Load audio snippet.
+TurnWarningsOff % MATLAB complains about using wavread, but audioread 
 [audioSnippet, sr] = wavread(fileName);
 
 % Convert to mono
@@ -50,8 +51,10 @@ while (countB1 <= length(beatOriginalTimes))
     countB2 = countB2 + 1;
 end
 
-% Set the Differential Gradient Lookahead
-dgl = 1;
+% Set Differential Gradient (DG) variables 
+dglLoc = 1; % DG Lookahead for Chorus Location Detection
+dglFFT = 1; % DG Lookahead for FFT
+stftl = 128; % DG Short Term FT Length
 
 % if (playChorus)
 %     % If you want to hear the beats played on top of the audio, uncomment here
@@ -76,29 +79,14 @@ for bSlowCounter=1:length(beatSlow)
 
     beatIntervalSamples = beatInterval * sr; % in samples
 
-    % Get the FFT ready.
-    fftSize = nextpow2(beatIntervalSamples);
-    fftLength = 2^fftSize;
-
+    % Window the signal appropriately
     frameStart = ceil(beatSlow(bSlowCounter) * sr);
     frameEnd = frameStart + ceil(beatIntervalSamples - 1);
     windowedSignal = audioSnippet(frameStart:frameEnd);
 
+    % Get the RMS Energy of the window
     RMSEnergy = sqrt((1/length(windowedSignal)) * sum(windowedSignal.^2));
-    
-    
-    % Compute the FFT and get the Energy of the signal
-%     fftWindowedSignal = abs(fft(windowedSignal, fftLength)); 
-%     
-%     psdx = (1/(sr*length(windowedSignal))) * abs(fftWindowedSignal).^2;
-%     psdx(2:end-1) = 2*psdx(2:end-1);    
-    
-%     fftWindowedSignal = fftWindowedSignal.^2;
-%     fftWindowedSignal = fftWindowedSignal / fftLength;
-%     MAT(bSlowCounter) = sum(fftWindowedSignal, 1);
-
     MAT(bSlowCounter) = RMSEnergy;
-
 end
 
 % We now have a vector of the energies for all the windows. Because
@@ -117,12 +105,21 @@ MATsmoothNormalized = (MATsmooth/max(MATsmooth));
 % The goal here is to use the rate of fluctuation of energy to eventually
 % extract the feature needed. Calculate the first order differential of the
 % energy curve to get some meaningful info about it's rate.
-firstOrderDifferential = zeros(1, length(MATsmoothNormalized)-dgl);
+firstOrderDifferentialFFT = zeros(1, length(MATsmoothNormalized)-dglFFT);
+firstOrderDifferentialLoc = zeros(1, length(MATsmoothNormalized)-dglLoc);
 
-for windowCount=1:length(MATsmoothNormalized)-dgl
+for windowCount=1:length(MATsmoothNormalized)-dglFFT
     vecOne = MATsmoothNormalized(windowCount);
-    vecTwo = MATsmoothNormalized(windowCount + dgl);    
-    firstOrderDifferential(windowCount) = vecTwo - vecOne;    
+    vecTwo = MATsmoothNormalized(windowCount + dglFFT);    
+    firstOrderDifferentialFFT(windowCount) = vecTwo - vecOne;
+end
+
+for windowCount=1:length(MATsmoothNormalized)-dglLoc
+    vecOne = MATsmoothNormalized(windowCount);
+    vecTwo = MATsmoothNormalized(windowCount + dglLoc);    
+    firstOrderDifferentialLoc(windowCount) = vecTwo - vecOne;
+    meanVec = (vecTwo + vecOne) / 2;
+    firstOrderDifferentialLoc(windowCount) = firstOrderDifferentialLoc(windowCount)/meanVec;
 end
 
 % Audio snippets with chorus sections tend to have more energy fluctuation
@@ -131,7 +128,7 @@ end
 % order differential and analyze the low frequency bin. Chorus sections
 % tend to have more high frequency (i.e. less low frequency) than
 % Non-chorus sections. This is sneaky, but it seems to work...
-feature = abs(fft(firstOrderDifferential, 64))/length(firstOrderDifferential);
+feature = abs(fft(firstOrderDifferentialFFT, stftl))/length(firstOrderDifferentialFFT);
 
 % Analyze the lowest bin, since we don't need all the rest.
 f = feature(1);
@@ -143,54 +140,38 @@ if (playChorus)
     % We will achieve this by building an onset detector, that will use the
     % mean of the contour as it's threshold. The beginning of audio is the
     % first segment. When we pass the threshold, the next segment starts, until
-    % we fall below the threshold. This should split the song into chorus and
-    % non-chorus segments.... roughly.
+    % we fall below the threshold. This should roughly split the song into chorus 
+    % and non-chorus segments.
 
     segmentLocations = 1;
     currentBeat = 2;
     belowThreshold = false;
     aboveThreshold = false;
     neutral = true;
-%     runningEstimateEnergyMin = 0;
-%     runningEstimateEnergyMax = 1;
-%     delta = 1.1;
 
-    % Set the initial threshold
-%     dynamicThresholdScalingFactor = (runningEstimateEnergyMax - (4000*runningEstimateEnergyMin))/runningEstimateEnergyMax;
-%     threshold = mean(abs(firstOrderDifferential(2:end-2)));
-%     runningEstimateEnergyMin = 1000000000;
-%     runningEstimateEnergyMax = 0;
-  
-    threshold = mean(abs(firstOrderDifferential));
+    % Set threshold
+    threshold = mean(abs(firstOrderDifferentialLoc));
     
-    for currentBeat = 1:length(firstOrderDifferential)
-%         currentEnergy = (firstOrderDifferential(currentBeat)^2);
-%         
-%         if (currentEnergy > runningEstimateEnergyMax)
-%             runningEstimateEnergyMax = currentEnergy;
-%         elseif (currentEnergy < runningEstimateEnergyMin)
-%             runningEstimateEnergyMin = currentEnergy;
-%         end
-                
+    for currentBeat = 1:length(firstOrderDifferentialLoc)
         if (neutral)        
-            if (firstOrderDifferential(currentBeat) > threshold)
-                segmentLocations = [segmentLocations currentBeat+dgl];
+            if (firstOrderDifferentialLoc(currentBeat) > threshold)
+                segmentLocations = [segmentLocations currentBeat+dglLoc];
                 neutral = false;
                 aboveThreshold = true;
                 belowThreshold = false;
-            elseif (firstOrderDifferential(currentBeat) < -threshold)
-                segmentLocations = [segmentLocations currentBeat+dgl];
+            elseif (firstOrderDifferentialLoc(currentBeat) < -threshold)
+                segmentLocations = [segmentLocations currentBeat+dglLoc];
                 neutral = false;
                 aboveThreshold = false;
                 belowThreshold = true;
             end        
         elseif (aboveThreshold)
-            if (firstOrderDifferential(currentBeat) < threshold)
-                if (firstOrderDifferential(currentBeat) < -threshold)
+            if (firstOrderDifferentialLoc(currentBeat) < threshold)
+                if (firstOrderDifferentialLoc(currentBeat) < -threshold)
                     belowThreshold = true;
                     neutral = false;
                     aboveThreshold = false;
-                    segmentLocations = [segmentLocations currentBeat+dgl];
+                    segmentLocations = [segmentLocations currentBeat+dglLoc];
                 else
                     neutral = true;
                     aboveThreshold = false;
@@ -198,36 +179,18 @@ if (playChorus)
                 end
             end
         elseif (belowThreshold)
-            if (firstOrderDifferential(currentBeat) > -threshold)
-                if (firstOrderDifferential(currentBeat) > threshold)
+            if (firstOrderDifferentialLoc(currentBeat) > -threshold)
+                if (firstOrderDifferentialLoc(currentBeat) > threshold)
                     belowThreshold = false;
                     neutral = false;
                     aboveThreshold = true;
-                    segmentLocations = [segmentLocations currentBeat+dgl];
+                    segmentLocations = [segmentLocations currentBeat+dglLoc];
                 else
                     neutral = true;
                     aboveThreshold = false;
                     belowThreshold = false;
                 end
-            end
-            
-            % Update the threshold.
-%             dynamicThresholdScalingFactor = (runningEstimateEnergyMax - runningEstimateEnergyMin)/runningEstimateEnergyMax;
-%             threshold = dynamicThresholdScalingFactor * mean(abs(firstOrderDifferential));
-%             
-%             if (runningEstimateEnergyMax > (currentEnergy * 4))
-%                 runningEstimateEnergyMin = currentEnergy;
-%             else            
-%                 runningEstimateEnergyMin = runningEstimateEnergyMin * delta;
-%                 delta = 1.1 * delta;
-%             end
-% 
-%             if (runningEstimateEnergyMin < (currentEnergy/4))
-%                 runningEstimateEnergyMin = currentEnergy;
-%             else            
-%                 runningEstimateEnergyMin = runningEstimateEnergyMin * delta;
-%                 delta = 1.1 * delta;
-%             end
+            end            
         end                    
     end
 
@@ -259,9 +222,18 @@ if (playChorus)
         end
     end
     
-    % Play the chorus
-    player = audioplayer(chorus, sr);
-    playblocking(player);
+    % Preview 5 seconds of the chorus. Add a small fade-out for style points.
+    interval = 5 * sr;
+    
+    if (interval > length(chorus))
+        disp('Chorus location uncertain, skipping preview..');
+    else
+        disp('Preview...');
+        envelope = [ones(1, interval-sr) linspace(1, 0, sr)];    
+        chorusPreview = chorus(1:interval) .* envelope';
+        player = audioplayer(chorusPreview, sr);
+        playblocking(player);
+    end
 end
 
 end

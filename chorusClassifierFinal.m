@@ -131,6 +131,7 @@ class = knnclassify(featureVectorTest, featureVectorTrain, groupVectorTrain, k);
 % Display results
 for song=1:numberOfTestSongs
     fileNameTest = strcat(songVectorTest(song, :));
+    fileNameTestPath = sprintf('Songs/%s', fileNameTest);    
     testResult = class(song);
     actualResult = groupVectorTest(song);
     match= [];
@@ -148,8 +149,11 @@ for song=1:numberOfTestSongs
     else
         disp(sprintf('\nAudio snippet: %s contains a chorus transition! %s\n', fileNameTest, match));
     
-        % Attempt to locate the chorus and play it! Optional.
-%         FeatureExtractor(fileNameTest, true);
+        if (actualResult)
+            % Uncomment this to try and find the chorus location and play a
+            % small preview of the chorus. Optional!
+            % FeatureExtractor(fileNameTestPath, true);
+        end
     end
     
 end
