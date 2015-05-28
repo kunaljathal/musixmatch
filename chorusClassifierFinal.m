@@ -22,7 +22,7 @@
 % 
 % Call this function as you would any other MATLAB function. The list of
 % training snippets, groups, and test audio snippets can be specified in
-% the songVectorTrain, groupVectorTrain, and testSample fields below.
+% the songVectorTrain, groupVectorTrain, and songVectorTest fields below.
 % *************************************************************************
 function chorusClassifierFinal
 
@@ -151,7 +151,7 @@ for song=1:numberOfTestSongs
     
         if (actualResult)
             % Uncomment this to try and find the chorus location and play a
-            % small preview of the chorus. Optional!
+            % small preview of it. Optional!
             % FeatureExtractor(fileNameTestPath, true);
         end
     end

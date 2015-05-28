@@ -27,11 +27,11 @@
 function f = FeatureExtractor(fileName, playChorus)
 
 % Load audio snippet.
-TurnWarningsOff % MATLAB complains about using wavread, but audioread 
 [audioSnippet, sr] = wavread(fileName);
 
-% Convert to mono
+% Convert to mono & normalize audio for consistency
 audioSnippet = mean(audioSnippet, 2);
+audioSnippet = 0.99 * audioSnippet/max(abs(audioSnippet));
 
 % We want to window the audio snippet by beat. Because most musical changes
 % don't happen in time frames of less than 2 bars, slow the original beat
@@ -55,12 +55,6 @@ end
 dglLoc = 1; % DG Lookahead for Chorus Location Detection
 dglFFT = 1; % DG Lookahead for FFT
 stftl = 128; % DG Short Term FT Length
-
-% if (playChorus)
-%     % If you want to hear the beats played on top of the audio, uncomment here
-%     beatMarkers = mkblips(beatSlow,sr,length(audioSnippet));
-%     soundsc(audioSnippet+beatMarkers,sr);
-% end
 
 % Initialize Energy Matrix
 MAT = zeros(1, length(beatSlow));
@@ -104,7 +98,9 @@ MATsmoothNormalized = (MATsmooth/max(MATsmooth));
 
 % The goal here is to use the rate of fluctuation of energy to eventually
 % extract the feature needed. Calculate the first order differential of the
-% energy curve to get some meaningful info about it's rate.
+% energy curve to get some meaningful info about it's rate. We use two
+% separate first order differential curves; one for feature extraction and
+% another for potential chorus location detection.
 firstOrderDifferentialFFT = zeros(1, length(MATsmoothNormalized)-dglFFT);
 firstOrderDifferentialLoc = zeros(1, length(MATsmoothNormalized)-dglLoc);
 
@@ -118,6 +114,10 @@ for windowCount=1:length(MATsmoothNormalized)-dglLoc
     vecOne = MATsmoothNormalized(windowCount);
     vecTwo = MATsmoothNormalized(windowCount + dglLoc);    
     firstOrderDifferentialLoc(windowCount) = vecTwo - vecOne;
+    
+    % We weigh the first order differential curve to compensate for
+    % transitions that don't correspond to choruses. This makes chorus
+    % location detection a little more precise/robust.
     meanVec = (vecTwo + vecOne) / 2;
     firstOrderDifferentialLoc(windowCount) = firstOrderDifferentialLoc(windowCount)/meanVec;
 end
@@ -127,7 +127,7 @@ end
 % contour will have a higher frequency. So we can take the FFT of the first
 % order differential and analyze the low frequency bin. Chorus sections
 % tend to have more high frequency (i.e. less low frequency) than
-% Non-chorus sections. This is sneaky, but it seems to work...
+% Non-chorus sections. This is sneaky, but it works.
 feature = abs(fft(firstOrderDifferentialFFT, stftl))/length(firstOrderDifferentialFFT);
 
 % Analyze the lowest bin, since we don't need all the rest.
@@ -152,6 +152,7 @@ if (playChorus)
     % Set threshold
     threshold = mean(abs(firstOrderDifferentialLoc));
     
+    % Onset Detection
     for currentBeat = 1:length(firstOrderDifferentialLoc)
         if (neutral)        
             if (firstOrderDifferentialLoc(currentBeat) > threshold)
@@ -215,7 +216,11 @@ if (playChorus)
         segment = audioSnippet(startingSample:endingSample);
         currentEnergy = sqrt((1/length(segment)) * sum((segment.^2)));
         
-        % See which segment has the highest RMS energy.
+        % See which segment has the highest RMS energy. It's likely to be the
+        % chorus (or very near it). Because we are looking at RMS energy over
+        % the entire window, this provides some resilience to sudden energy
+        % transitions (egs: build-ups) that could be otherwise mistaken for
+        % choruses.
         if (currentEnergy > highestEnergy)
             highestEnergy = currentEnergy;
             chorus = segment;
@@ -225,6 +230,7 @@ if (playChorus)
     % Preview 5 seconds of the chorus. Add a small fade-out for style points.
     interval = 5 * sr;
     
+    % If the segment is too short, it likely isn't the chorus, so skip it.
     if (interval > length(chorus))
         disp('Chorus location uncertain, skipping preview..');
     else
