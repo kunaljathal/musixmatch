@@ -15,14 +15,14 @@
 % classifier, which eventually tries to detect if a test sample audio
 % snippet contains a chorus transition or not. In addition to implementing
 % the classifier, a rough chorus location system has also been implemented.
-% The chorus location system tries to identify the exact position and
-% duration of the chorus and plays it back.
+% The chorus location system tries to identify the position of the
+% chorus/transition and plays it back.
 % 
 % Usage
 % 
 % Call this function as you would any other MATLAB function. The list of
-% training snippets, groups, and test audio snippets can be specified in
-% the songVectorTrain, groupVectorTrain, and songVectorTest fields below.
+% training & testing audio snippets & groups can be specified in the
+% songVector and groupVector variables below.
 % *************************************************************************
 function chorusClassifierFinal
 
